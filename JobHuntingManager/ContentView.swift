@@ -6,89 +6,101 @@
 //
 
 import SwiftUI
+import SwiftData // 忘れずに追加
 
-struct Company: Identifiable {
-    let id = UUID()
+enum SelectionStatus: String, CaseIterable, Identifiable {
+    case draft = "エントリー予定"
+    case applied = "エントリー済み"
+    case interviewing = "面接中"
+    case offered = "内定"
+    case rejected = "お見送り"
+    
+    var id: String { self.rawValue }
+}
+@Model // これだけで保存可能なオブジェクトになります
+class Company: Identifiable {
+    var id: UUID = UUID()
     var name: String
     var status: String
-    var color: Color
-    
-    // 追加：新しい企業を作る時に使いやすくするための初期化関数
-    init(name: String, status: String, color: Color = .blue) {
+    var colorName: String // Color型は直接保存できないため、色名などの文字列で保存するのが一般的です
+
+    init(name: String, status: String, colorName: String = "blue") {
         self.name = name
         self.status = status
-        self.color = color
+        self.colorName = colorName
     }
 }
 
-
-
 struct ContentView: View {
-    @State var companies = [
-        Company(name: "サイボウズ", status: "インターン応募中", color: .orange)
-    ]
-    @State private var isShowingAddView = false // 追加画面を出すかどうかのフラグ
+    @Environment(\.modelContext) private var modelContext // 倉庫への出し入れ担当
+    @Query var companies: [Company] // 保存されているデータを自動取得
+    
+    @State private var isShowingAddView = false
 
     var body: some View {
         NavigationStack {
             List {
                 ForEach(companies) { company in
-                    // 前回のリスト表示コード（省略）
                     VStack(alignment: .leading) {
                         Text(company.name).font(.headline)
-                        Text(company.status).font(.caption).foregroundColor(.secondary)
+                        Text(company.status).font(.caption)
                     }
                 }
                 .onDelete(perform: deleteCompany)
             }
             .navigationTitle("就活ステータス")
             .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(action: { isShowingAddView = true }) {
-                        Image(systemName: "plus") // 右上の＋ボタン
-                    }
-                }
-                ToolbarItem(placement: .navigationBarLeading) {
-                    EditButton()
+                Button(action: { isShowingAddView = true }) {
+                    Image(systemName: "plus")
                 }
             }
-            // ここで追加画面を「シート」として出す
             .sheet(isPresented: $isShowingAddView) {
                 AddCompanyView { newCompany in
-                    companies.append(newCompany) // 新しい企業をリストに足す
+                    modelContext.insert(newCompany) // 倉庫へ保存！
                 }
             }
         }
     }
     
     func deleteCompany(at offsets: IndexSet) {
-        companies.remove(atOffsets: offsets)
+        for index in offsets {
+            modelContext.delete(companies[index]) // 倉庫から削除！
+        }
     }
 }
 struct AddCompanyView: View {
-    @Environment(\.dismiss) var dismiss // 画面を閉じるための変数
+    @Environment(\.dismiss) var dismiss
     @State private var name = ""
-    @State private var status = "エントリー予定"
+    // 初期値を enum の「エントリー予定」にする
+    @State private var status = SelectionStatus.draft
     
-    var onSave: (Company) -> Void // 保存した時にContentViewにデータを渡すための仕掛け
+    var onSave: (Company) -> Void
 
     var body: some View {
         NavigationStack {
             Form {
                 Section(header: Text("企業情報")) {
                     TextField("企業名を入力", text: $name)
-                    TextField("選考状況", text: $status)
+                    
+                    // ここが「選択肢」の部品！
+                    Picker("選考状況", selection: $status) {
+                        ForEach(SelectionStatus.allCases) { s in
+                            Text(s.rawValue).tag(s)
+                        }
+                    }
+                    .pickerStyle(.menu) // iOSらしいメニュー形式。 .navigationLink に変えてもかっこいいです。
                 }
             }
             .navigationTitle("企業を追加")
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("追加") {
-                        let newCompany = Company(name: name, status: status)
-                        onSave(newCompany) // データを渡す
-                        dismiss() // 画面を閉じる
+                        // 選択されたstatusの文字列を渡す
+                        let newCompany = Company(name: name, status: status.rawValue)
+                        onSave(newCompany)
+                        dismiss()
                     }
-                    .disabled(name.isEmpty) // 名前が空ならボタンを押せなくする
+                    .disabled(name.isEmpty)
                 }
                 ToolbarItem(placement: .cancellationAction) {
                     Button("キャンセル") { dismiss() }

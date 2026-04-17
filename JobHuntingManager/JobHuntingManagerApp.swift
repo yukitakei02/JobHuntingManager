@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftData
 
 @main
 struct JobHuntingManagerApp: App {
@@ -13,5 +14,6 @@ struct JobHuntingManagerApp: App {
         WindowGroup {
             ContentView()
         }
+        .modelContainer(for: Company.self) // 倉庫の準備完了
     }
 }
